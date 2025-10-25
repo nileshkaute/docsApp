@@ -1,108 +1,81 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Card } from './Card';
-import { supabase } from '../supabaseClient';
+import AuthModal from './AuthModal';
+import apiClient from '../apiClient';
 
-const Forground = () => {
+const Foreground = () => {
   const ref = useRef(null);
   const [cards, setCards] = useState([]);
   const [search, setSearch] = useState("");
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
-  // 🔹 Authenticate anonymously
+  // Check if user is logged in
   useEffect(() => {
-    const initAuth = async () => {
-      // Check if user exists
-      const { data: { user: existingUser } } = await supabase.auth.getUser();
-      
-      if (!existingUser) {
-        // Sign in anonymously
-        const { data, error } = await supabase.auth.signInAnonymously();
-        if (error) console.error('Auth error:', error);
-        else setUser(data.user);
-      } else {
-        setUser(existingUser);
+    const checkAuth = async () => {
+      try {
+        const userData = await apiClient.getMe();
+        setUser(userData);
+      } catch (error) {
+        console.log('Not authenticated');
+        setShowAuthModal(true);
       }
     };
 
-    initAuth();
-
-    // Listen to auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null);
-    });
-
-    return () => subscription.unsubscribe();
+    checkAuth();
   }, []);
 
-  // 🔹 Load files from Supabase for this user
+  // Load files
   useEffect(() => {
     if (!user) return;
     
     const fetchFiles = async () => {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('files')
-        .select('*')
-        .eq('userId', user.id)
-        .order('createdAt', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching files:', error);
-      } else {
+      try {
+        const data = await apiClient.getFiles();
         setCards(data || []);
+      } catch (error) {
+        console.error('Error fetching files:', error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     fetchFiles();
   }, [user]);
 
-  // 🔹 Upload file
+  const handleAuthSuccess = async () => {
+    try {
+      const userData = await apiClient.getMe();
+      setUser(userData);
+      setShowAuthModal(false);
+    } catch (error) {
+      console.error('Auth error:', error);
+    }
+  };
+
+  const handleLogout = () => {
+    apiClient.logout();
+    setUser(null);
+    setCards([]);
+    setShowAuthModal(true);
+  };
+
   const handleFileUpload = async (e) => {
-    if (!user) return alert("Not logged in");
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+
     const file = e.target.files[0];
     if (!file) return;
 
     setLoading(true);
 
     try {
-      // Upload to Supabase Storage
-      const fileName = `${Date.now()}_${file.name}`;
-      const filePath = `${user.id}/${fileName}`;
-
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('files')
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('files')
-        .getPublicUrl(filePath);
-
-      // Save metadata in Database
-      const { data: dbData, error: dbError } = await supabase
-        .from('files')
-        .insert([
-          {
-            userId: user.id,
-            description: file.name,
-            filesize: (file.size / (1024 * 1024)).toFixed(2) + " MB",
-            fileUrl: publicUrl,
-            fileType: file.type,
-            tagTitle: "Uploaded",
-            tagColor: "green"
-          }
-        ])
-        .select()
-        .single();
-
-      if (dbError) throw dbError;
-
-      // Add to state
-      setCards([dbData, ...cards]);
+      const newFile = await apiClient.uploadFile(file);
+      setCards([newFile, ...cards]);
       alert("File uploaded successfully!");
     } catch (error) {
       console.error('Upload error:', error);
@@ -112,38 +85,25 @@ const Forground = () => {
     }
   };
 
-  // 🔹 Download
   const handleDownload = async (url, id) => {
     const link = document.createElement("a");
     link.href = url;
     link.download = "";
     link.click();
 
-    // Update tag to "Downloaded"
-    await supabase
-      .from('files')
-      .update({ tagTitle: "Downloaded", tagColor: "blue" })
-      .eq('id', id);
-
-    setCards(cards.map(c =>
-      c.id === id ? { ...c, tagTitle: "Downloaded", tagColor: "blue" } : c
-    ));
+    try {
+      await apiClient.updateFileTag(id, "Downloaded", "blue");
+      setCards(cards.map(c =>
+        c.id === id ? { ...c, tagTitle: "Downloaded", tagColor: "blue" } : c
+      ));
+    } catch (error) {
+      console.error('Error updating tag:', error);
+    }
   };
 
-  // 🔹 Remove file
-  const handleRemove = async (id, fileUrl) => {
+  const handleRemove = async (id) => {
     try {
-      // Extract file path from URL
-      const urlParts = fileUrl.split('/files/');
-      const filePath = urlParts[1];
-
-      // Delete from storage
-      await supabase.storage.from('files').remove([filePath]);
-
-      // Delete from database
-      await supabase.from('files').delete().eq('id', id);
-
-      // Update state
+      await apiClient.deleteFile(id);
       setCards(cards.filter(c => c.id !== id));
     } catch (error) {
       console.error('Delete error:', error);
@@ -155,32 +115,77 @@ const Forground = () => {
     c.description.toLowerCase().includes(search.toLowerCase())
   );
 
+  if (!user) {
+    return <AuthModal isOpen={showAuthModal} onClose={() => {}} onSuccess={handleAuthSuccess} />;
+  }
+
   return (
     <div>
-      <div className='fixed top-5 right-5 z-[4] flex gap-2'>
-        <label className='px-4 py-2 bg-zinc-700 text-white rounded-lg shadow hover:bg-zinc-600 cursor-pointer'>
-          {loading ? 'Uploading...' : '+ Upload File'}
-          <input 
-            type="file" 
-            className="hidden" 
-            onChange={handleFileUpload}
-            disabled={loading}
+      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onSuccess={handleAuthSuccess} />
+      
+      {/* Bottom controls */}
+      <div className='fixed bottom-5 left-0 right-0 z-[4] flex justify-center'>
+        <div className='flex flex-wrap gap-2 items-center bg-zinc-900/90 backdrop-blur-sm px-4 py-2 rounded-lg border border-zinc-600'>
+          {/* Upload button on left */}
+          <label className='px-3 py-2 bg-blue-800 text-white rounded-lg cursor-pointer transition-colors'>
+            {loading ? 'Uploading...' : '+ Upload File'}
+            <input 
+              type="file" 
+              className="hidden" 
+              onChange={handleFileUpload}
+              disabled={loading}
+            />
+          </label>
+          
+          {/* Search in middle */}
+          <input
+            type="text"
+            placeholder="Search files..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="px-3 py-2 rounded-lg border text-white border-zinc-600 bg-zinc-800 focus:outline-none focus:border-zinc-500 transition-colors w-40 sm:w-48"
           />
-        </label>
-        <input
-          type="text"
-          placeholder="Search files..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="px-3 py-2 rounded-lg border text-white border-gray-400 bg-zinc-800"
-        />
+          
+          {/* User info and logout on right */}
+          <div className="flex items-center gap-2">
+            <div className="px-3 py-2 bg-green-800 text-white rounded-lg border border-green-400 hidden sm:block">
+              <span className="text-sm">👤 {user.name}</span>
+            </div>
+            
+            <button
+              onClick={handleLogout}
+              className="px-3 py-2 bg-purple-800 text-white rounded-lg transition-colors"
+            >
+              Logout
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div ref={ref} className='fixed top-0 left-0 z-[3] w-full h-full flex gap-10 flex-wrap p-5'>
+      {/* Cards container - scrollbar removed */}
+      <div 
+        ref={ref} 
+        className='fixed top-0 left-0 z-[3] w-full h-full flex gap-5 sm:gap-10 flex-wrap p-5 pt-5 overflow-y-auto'
+        style={{
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none'
+        }}
+      >
+        {/* Hide scrollbar for Webkit browsers */}
+        <style jsx>{`
+          div::-webkit-scrollbar {
+            display: none;
+          }
+        `}</style>
+
         {loading && cards.length === 0 ? (
-          <p className="text-white">Loading files...</p>
+          <div className="w-full flex items-center justify-center h-full">
+            <p className="text-white text-lg">Loading files...</p>
+          </div>
         ) : filteredCards.length === 0 ? (
-          <p className="text-white">No files found</p>
+          <div className="w-full flex items-center justify-center h-full">
+            <p className="text-white text-lg">No files found</p>
+          </div>
         ) : (
           filteredCards.map(item => (
             <Card
@@ -196,7 +201,7 @@ const Forground = () => {
                 close: true
               }}
               reference={ref}
-              onRemove={() => handleRemove(item.id, item.fileUrl)}
+              onRemove={() => handleRemove(item.id)}
               onDownload={() => handleDownload(item.fileUrl, item.id)}
             />
           ))
@@ -206,4 +211,4 @@ const Forground = () => {
   );
 };
 
-export default Forground;
+export default Foreground;

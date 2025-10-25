@@ -1,5 +1,5 @@
 import React from 'react';
-import { FaRegFileAlt, FaFilePdf, FaFileWord, FaFileImage } from 'react-icons/fa';
+import { FaRegFileAlt, FaFilePdf, FaFileWord } from 'react-icons/fa';
 import { LuDownload } from 'react-icons/lu';
 import { IoClose } from 'react-icons/io5';
 import { motion } from "motion/react";
@@ -19,10 +19,10 @@ export const Card = ({ data, reference, onRemove, onDownload }) => {
     <motion.div
       drag
       dragConstraints={reference}
-      whileDrag={{ scale: 1.2 }}
+      whileDrag={{ scale: 1.1 }}
       dragElastic={0.1}
       dragTransition={{ bounceStiffness: 600, bounceDamping: 10 }}
-      className='relative flex-shrink-0 w-60 h-72 bg-zinc-800/80 rounded-[20px] text-white px-5 py-6 overflow-hidden'
+      className='relative flex-shrink-0 w-60 h-72 bg-zinc-800/80 rounded-[20px] text-white px-5 py-6 overflow-hidden shadow-lg hover:shadow-xl transition-shadow'
     >
       {/* File Preview */}
       <div className="w-full h-32 flex items-center justify-center bg-zinc-900 rounded-lg mb-4">
@@ -30,23 +30,27 @@ export const Card = ({ data, reference, onRemove, onDownload }) => {
       </div>
 
       {/* File Info */}
-      <p className='text-sm leading-tight font-semibold truncate'>{data.desc}</p>
+      <p className='text-sm leading-tight font-semibold truncate' title={data.desc}>
+        {data.desc}
+      </p>
 
       {/* Footer */}
       <div className="footer absolute bottom-0 left-0 w-full">
         <div className='flex justify-between py-3 px-6 items-center mb-3'>
-          <h5>{data.filesize}</h5>
+          <h5 className="text-xs text-zinc-400">{data.filesize}</h5>
           <div className='flex gap-2'>
             <span
-              className='w-7 h-7 bg-zinc-200 rounded-full flex justify-center items-center cursor-pointer'
+              className='w-7 h-7 bg-zinc-200 rounded-full flex justify-center items-center cursor-pointer hover:bg-zinc-300 transition-colors'
               onClick={onDownload}
+              title="Download"
             >
               <LuDownload size="0.8em" color="black" />
             </span>
             {data.close && (
               <span
-                className='w-7 h-7 bg-zinc-200 rounded-full flex justify-center items-center cursor-pointer'
-                onClick={() => onRemove(data.id)}
+                className='w-7 h-7 bg-zinc-200 rounded-full flex justify-center items-center cursor-pointer hover:bg-red-100 transition-colors'
+                onClick={onRemove}
+                title="Delete"
               >
                 <IoClose color="black" />
               </span>

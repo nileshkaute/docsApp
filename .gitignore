@@ -1,13 +1,16 @@
-# Dependencies
+# Create .gitignore (or add to existing)
+cat >> .gitignore << EOF
 node_modules/
+dist/
+.env
+.env.local
+*.log
+.DS_Store
+EOF
+
 
 # Production
 /build
-
-# Environment variables
-.env
-.env.local
-
-# Misc
-.DS_Store
 npm-debug.log*
+
+
