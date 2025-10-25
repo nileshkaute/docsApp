@@ -20,6 +20,12 @@ const AuthModal = ({ isOpen, onClose, onSuccess }) => {
       const apiClient = (await import('../apiClient')).default;
       
       if (isLogin) {
+        // Check if user exists before trying to login
+        if (!apiClient.checkUserExists(email)) {
+          setError('No account found with this email. Please sign up first.');
+          setLoading(false);
+          return;
+        }
         await apiClient.login(email, password);
       } else {
         if (!name) {
@@ -79,14 +85,14 @@ const AuthModal = ({ isOpen, onClose, onSuccess }) => {
           {!isLogin && (
             <div className="mb-4">
               <label className="block text-zinc-300 text-sm font-medium mb-2">
-                Name
+                Full Name
               </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition-colors"
-                placeholder="Enter your name"
+                placeholder="Enter your full name"
                 required={!isLogin}
               />
             </div>
@@ -119,6 +125,9 @@ const AuthModal = ({ isOpen, onClose, onSuccess }) => {
               required
               minLength={6}
             />
+            {!isLogin && (
+              <p className="text-zinc-500 text-xs mt-1">Password must be at least 6 characters</p>
+            )}
           </div>
 
           <button
@@ -126,7 +135,7 @@ const AuthModal = ({ isOpen, onClose, onSuccess }) => {
             disabled={loading}
             className="w-full py-3 bg-zinc-700 hover:bg-zinc-600 text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'Please wait...' : (isLogin ? 'Sign In' : 'Sign Up')}
+            {loading ? 'Please wait...' : (isLogin ? 'Sign In' : 'Create Account')}
           </button>
 
           <div className="mt-6 text-center">

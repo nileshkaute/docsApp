@@ -8,27 +8,35 @@ const Foreground = () => {
   const [cards, setCards] = useState([]);
   const [search, setSearch] = useState("");
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // Start with loading true
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [dbInitialized, setDbInitialized] = useState(false);
 
-  // Check if user is logged in
+  // Initialize database and check auth on component mount
   useEffect(() => {
-    const checkAuth = async () => {
+    const initializeApp = async () => {
       try {
+        // Ensure database is initialized first
+        await apiClient.ensureInitialized();
+        setDbInitialized(true);
+        
+        // Then check authentication
         const userData = await apiClient.getMe();
         setUser(userData);
       } catch (error) {
-        console.log('Not authenticated');
+        console.log('Not authenticated or initialization failed:', error);
         setShowAuthModal(true);
+      } finally {
+        setLoading(false);
       }
     };
 
-    checkAuth();
+    initializeApp();
   }, []);
 
-  // Load files
+  // Load files when user is set and DB is initialized
   useEffect(() => {
-    if (!user) return;
+    if (!user || !dbInitialized) return;
     
     const fetchFiles = async () => {
       setLoading(true);
@@ -43,13 +51,17 @@ const Foreground = () => {
     };
 
     fetchFiles();
-  }, [user]);
+  }, [user, dbInitialized]);
 
   const handleAuthSuccess = async () => {
     try {
       const userData = await apiClient.getMe();
       setUser(userData);
       setShowAuthModal(false);
+      
+      // Reload files after successful auth
+      const data = await apiClient.getFiles();
+      setCards(data || []);
     } catch (error) {
       console.error('Auth error:', error);
     }
@@ -75,13 +87,16 @@ const Foreground = () => {
 
     try {
       const newFile = await apiClient.uploadFile(file);
-      setCards([newFile, ...cards]);
+      // Immediately update the UI with the new file
+      setCards(prevCards => [newFile, ...prevCards]);
       alert("File uploaded successfully!");
     } catch (error) {
       console.error('Upload error:', error);
       alert('Error uploading file: ' + error.message);
     } finally {
       setLoading(false);
+      // Clear the file input
+      e.target.value = '';
     }
   };
 
@@ -114,6 +129,15 @@ const Foreground = () => {
   const filteredCards = cards.filter(c => 
     c.description.toLowerCase().includes(search.toLowerCase())
   );
+
+  // Show loading state
+  if (loading && cards.length === 0) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-zinc-900">
+        <div className="text-white text-lg">Loading...</div>
+      </div>
+    );
+  }
 
   if (!user) {
     return <AuthModal isOpen={showAuthModal} onClose={() => {}} onSuccess={handleAuthSuccess} />;
@@ -162,7 +186,7 @@ const Foreground = () => {
         </div>
       </div>
 
-      {/* Cards container - scrollbar removed */}
+      {/* Cards container */}
       <div 
         ref={ref} 
         className='fixed top-0 left-0 z-[3] w-full h-full flex gap-5 sm:gap-10 flex-wrap p-5 pt-5 overflow-y-auto'
@@ -171,7 +195,6 @@ const Foreground = () => {
           msOverflowStyle: 'none'
         }}
       >
-        {/* Hide scrollbar for Webkit browsers */}
         <style jsx>{`
           div::-webkit-scrollbar {
             display: none;
